@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>本地记账本</title>
+    <style>
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+            max-width: 600px; 
+            margin: 40px auto; 
+            padding: 20px; 
+            background: #f0f2f5;
+        }
+        .card { 
+            background: white; 
+            padding: 25px; 
+            border-radius: 12px; 
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1); 
+            margin-bottom: 20px;
+        }
+        h2 { margin-top: 0; color: #333; }
+        .form-row { 
+            display: flex; 
+            gap: 10px; 
+            margin-bottom: 15px; 
+            flex-wrap: wrap;
+        }
+        input, select { 
+            padding: 12px; 
+            border: 1px solid #ddd; 
+            border-radius: 6px; 
+            font-size: 16px; 
+            flex: 1;
+        }
+        button { 
+            padding: 12px 24px; 
+            background: #4CAF50; 
+            color: white; 
+            border: none; 
+            border-radius: 6px; 
+            cursor: pointer; 
+            font-size: 16px;
+            transition: opacity 0.2s;
+        }
+        button:hover { opacity: 0.9; }
+        .delete-btn { 
+            background: #ff4444; 
+            padding: 6px 12px; 
+            font-size: 14px; 
+        }
+        .edit-btn {
+            background: #ffa500;
+            padding: 6px 12px;
+            font-size: 14px;
+            margin-right: 5px;
+        }
+        .stats { 
+            display: grid; 
+            grid-template-columns: repeat(3, 1fr); 
+            gap: 15px; 
+            margin: 20px 0;
+        }
+        .stat-box { 
+            background: #e3f2fd; 
+            padding: 15px; 
+            border-radius: 8px; 
+            text-align: center; 
+        }
+        .stat-value { 
+            font-size: 24px; 
+            font-weight: bold; 
+            color: #1976d2; 
+        }
+        .stat-label { 
+            color: #666; 
+            font-size: 14px; 
+            margin-top: 5px;
+        }
+        .total-box { 
+            background: #ffebee; 
+            color: #d32f2f;
+        }
+        .total-box .stat-value { color: #d32f2f; }
+        
+        .record-list { margin-top: 20px; }
+        .record-item { 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center;
+            padding: 12px; 
+            border-bottom: 1px solid #eee; 
+        }
+        .record-item:last-child { border-bottom: none; }
+        .record-info { flex: 1; }
+        .record-category { 
+            display: inline-block; 
+            padding: 4px 10px; 
+            background: #e0e0e0; 
+            border-radius: 4px; 
+            font-size: 14px; 
+            margin-right: 10px;
+        }
+        .record-amount { 
+            font-weight: bold; 
+            color: #333; 
+            font-size: 18px;
+        }
+        .record-time {
+            color: #999;
+            font-size: 12px;
+            margin-left: 10px;
+        }
+        .empty-tip { 
+            color: #999; 
+            text-align: center; 
+            padding: 40px; 
+        }
+        .backup-btn {
+            background: #2196F3;
+            font-size: 14px;
+            padding: 8px 16px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h2>📝 新增消费</h2>
+    <div class="form-row">
+        <input type="number" id="amount" step="0.01" placeholder="金额（元）">
+        <select id="category">
+            <option value="餐饮">餐饮</option>
+            <option value="交通">交通</option>
+            <option value="购物">购物</option>
+            <option value="娱乐">娱乐</option>
+            <option value="其他">其他</option>
+        </select>
+        <button onclick="添加记录()">记账</button>
+    </div>
+</div>
+
+<div class="card">
+    <h3>📊 今日统计</h3>
+    <div class="stats">
+        <div class="stat-box">
+            <div class="stat-value" id="count">0</div>
+            <div class="stat-label">总笔数</div>
+        </div>
+        <div class="stat-box total-box">
+            <div class="stat-value" id="total">0</div>
+            <div class="stat-label">总支出</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-value" id="avg">0</div>
+            <div class="stat-label">平均</div>
+        </div>
+    </div>
+    <div style="margin-top: 15px; font-size: 14px; color: #666;">
+        <span id="detail-food">餐饮: 0</span> | 
+        <span id="detail-transport">交通: 0</span> | 
+        <span id="detail-shopping">购物: 0</span>
+    </div>
+</div>
+
+<div class="card">
+    <h3>📜 历史记录 <button class="backup-btn" onclick="导出备份()" style="float: right; margin-top: -5px;">导出CSV备份</button></h3>
+    <div id="recordList" class="record-list">
+        <div class="empty-tip">暂无记录</div>
+    </div>
+</div>
+
+<script>
+// ========== 数据操作 ==========
+
+const STORAGE_KEY = 'accounting_records';
+
+function 获取所有记录() {
+    const data = localStorage.getItem(STORAGE_KEY);
+    return data ? JSON.parse(data) : [];
+}
+
+function 保存记录(records) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+    刷新界面();
+}
+
+function 添加记录() {
+    const amount = parseFloat(document.getElementById('amount').value);
+    const category = document.getElementById('category').value;
+    
+    if (!amount || amount <= 0) {
+        alert('请输入有效金额');
+        return;
+    }
+    
+    const records = 获取所有记录();
+    const newRecord = {
+        id: Date.now(), // 时间戳作为唯一ID
+        amount: amount,
+        category: category,
+        date: new Date().toLocaleDateString(),
+        time: new Date().toLocaleTimeString()
+    };
+    
+    records.unshift(newRecord); // 新记录放最前面
+    保存记录(records);
+    
+    // 清空输入
+    document.getElementById('amount').value = '';
+    document.getElementById('amount').focus();
+}
+
+function 删除记录(id) {
+    if (!confirm('确定删除这条记录吗？')) return;
+    
+    let records = 获取所有记录();
+    records = records.filter(r => r.id !== id);
+    保存记录(records);
+}
+
+function 编辑记录(id) {
+    const records = 获取所有记录();
+    const record = records.find(r => r.id === id);
+    if (!record) return;
+    
+    const newAmount = prompt('修改金额:', record.amount);
+    if (newAmount === null) return; // 用户点了取消
+    
+    const num = parseFloat(newAmount);
+    if (!num || num <= 0) {
+        alert('金额无效');
+        return;
+    }
+    
+    record.amount = num;
+    保存记录(records);
+}
+
+function 计算统计(records) {
+    const stats = {
+        count: records.length,
+        total: 0,
+        food: 0,
+        transport: 0,
+        shopping: 0
+    };
+    
+    records.forEach(r => {
+        stats.total += r.amount;
+        if (r.category === '餐饮') stats.food += r.amount;
+        else if (r.category === '交通') stats.transport += r.amount;
+        else if (r.category === '购物') stats.shopping += r.amount;
+    });
+    
+    return stats;
+}
+
+// ========== 界面渲染 ==========
+
+function 刷新界面() {
+    const records = 获取所有记录();
+    const stats = 计算统计(records);
+    
+    // 更新统计数字
+    document.getElementById('count').textContent = stats.count;
+    document.getElementById('total').textContent = stats.total.toFixed(2);
+    document.getElementById('avg').textContent = stats.count ? (stats.total / stats.count).toFixed(2) : '0';
+    
+    document.getElementById('detail-food').textContent = `餐饮: ${stats.food.toFixed(2)}`;
+    document.getElementById('detail-transport').textContent = `交通: ${stats.transport.toFixed(2)}`;
+    document.getElementById('detail-shopping').textContent = `购物: ${stats.shopping.toFixed(2)}`;
+    
+    // 渲染列表
+    const listEl = document.getElementById('recordList');
+    if (records.length === 0) {
+        listEl.innerHTML = '<div class="empty-tip">暂无记录，开始记账吧～</div>';
+        return;
+    }
+    
+    listEl.innerHTML = records.map(r => `
+        <div class="record-item">
+            <div class="record-info">
+                <span class="record-category">${r.category}</span>
+                <span class="record-amount">¥${r.amount.toFixed(2)}</span>
+                <span class="record-time">${r.time}</span>
+            </div>
+            <div>
+                <button class="edit-btn" onclick="编辑记录(${r.id})">编辑</button>
+                <button class="delete-btn" onclick="删除记录(${r.id})">删除</button>
+            </div>
+        </div>
+    `).join('');
+}
+
+function 导出备份() {
+    const records = 获取所有记录();
+    if (records.length === 0) {
+        alert('没有数据可导出');
+        return;
+    }
+    
+    // 生成CSV内容
+    const lines = ['类别,金额,日期,时间'];
+    records.forEach(r => {
+        lines.push(`${r.category},${r.amount},${r.date},${r.time}`);
+    });
+    
+    // 创建下载
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `记账备份_${new Date().toLocaleDateString()}.csv`;
+    link.click();
+}
+
+// 初始化
+刷新界面();
+
+// 支持回车键记账
+document.getElementById('amount').addEventListener('keypress', function(e) {
+    if (e.key === 'Enter') 添加记录();
+});
+</script>
+
+</body>
+</html>
